@@ -41,8 +41,7 @@ cache/
 warc.paths
 *.warc.gz
 
-# Config (sensitive data)
-config.py
+# Config (sensitive data) - Yorum: config.py artık dahil, template olarak
 
 # OS
 .DS_Store
