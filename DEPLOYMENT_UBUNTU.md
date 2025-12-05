@@ -44,15 +44,41 @@ git clone https://github.com/ilkmuratkr/Crawler.git
 cd Crawler
 ```
 
-## 4. Bağımlılıkları Sistem Geneline Yükleme
+## 4. Bağımlılıkları Yükleme
 
+**ÖNEMLİ:** Ubuntu 23.04+ ve Python 3.11+ sürümlerinde sistem Python'u korumalıdır (PEP 668).
+
+### Çözüm 1: APT ile Yükleme (Önerilen)
 ```bash
-# requirements.txt'den direkt sistem Python'una yükle
-sudo pip3 install -r requirements.txt
+# Ubuntu paket depolarından mevcut paketleri yükle
+sudo apt install -y python3-requests python3-urllib3 python3-tqdm
 
-# Alternatif olarak tek tek yükleyebilirsiniz:
-sudo pip3 install requests urllib3 warcio tqdm tenacity
+# Pip gerekiyorsa --break-system-packages ile
+sudo pip3 install --break-system-packages warcio tenacity
 ```
+
+### Çözüm 2: Break System Packages (Hızlı)
+```bash
+# Tüm bağımlılıkları zorla yükle
+sudo pip3 install --break-system-packages -r requirements.txt
+```
+
+### Çözüm 3: Virtual Environment (En Güvenli)
+```bash
+# Python venv paketini yükle
+sudo apt install -y python3-venv
+
+# Virtual environment oluştur
+python3 -m venv venv
+
+# Aktif et
+source venv/bin/activate
+
+# Bağımlılıkları yükle (sudo YOK!)
+pip install -r requirements.txt
+```
+
+**Not:** Çözüm 2 veya 3'ü kullanmanızı öneriyorum. Çözüm 3 en güvenli yöntemdir.
 
 ## 5. Yapılandırma
 
@@ -179,6 +205,9 @@ screen -S crawler
 # Projeye git
 cd ~/Crawler
 
+# EĞER VENV KULLANIYORSANIZ:
+source venv/bin/activate
+
 # Büyük scale'de çalıştır
 python3 process_warcs.py \
   --enable-proxy \
@@ -223,7 +252,7 @@ Ctrl+D
 sudo nano /etc/systemd/system/crawler.service
 ```
 
-İçeriği:
+**VENV KULLANMIYORSANIZ:**
 ```ini
 [Unit]
 Description=Common Crawl WARC Crawler with Proxy Rotation
@@ -243,7 +272,27 @@ StandardError=append:/home/ubuntu/Crawler/logs/service_error.log
 WantedBy=multi-user.target
 ```
 
-**Not:** `User=ubuntu` kısmını kendi kullanıcı adınızla değiştirin.
+**VENV KULLANIYORSANIZ:**
+```ini
+[Unit]
+Description=Common Crawl WARC Crawler with Proxy Rotation
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/Crawler
+ExecStart=/home/ubuntu/Crawler/venv/bin/python /home/ubuntu/Crawler/process_warcs.py --enable-proxy --workers 15 --limit 10000 --log-level INFO
+Restart=on-failure
+RestartSec=60
+StandardOutput=append:/home/ubuntu/Crawler/logs/service.log
+StandardError=append:/home/ubuntu/Crawler/logs/service_error.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Not:** `User=ubuntu` ve `/home/ubuntu/` kısımlarını kendi kullanıcı adınızla değiştirin.
 
 ### Service'i etkinleştirme:
 ```bash
@@ -525,12 +574,13 @@ sudo systemctl start fail2ban
 
 ## 18. Hızlı Komut Özeti
 
+### Yöntem 1: Break System Packages (En Hızlı)
 ```bash
 # ===== KURULUM =====
 sudo apt update && sudo apt install -y python3 python3-pip git
 git clone https://github.com/ilkmuratkr/Crawler.git
 cd Crawler
-sudo pip3 install -r requirements.txt
+sudo pip3 install --break-system-packages -r requirements.txt
 cp config.example.py config.py
 nano config.py  # Proxy'leri düzenle
 mkdir -p data/output data/failures logs
@@ -542,7 +592,33 @@ python3 process_warcs.py --enable-proxy --workers 3 --limit 5
 screen -S crawler
 python3 process_warcs.py --enable-proxy --workers 15 --limit 10000
 # Ctrl+A, sonra D (detach)
+```
 
+### Yöntem 2: Virtual Environment (Önerilen)
+```bash
+# ===== KURULUM =====
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
+git clone https://github.com/ilkmuratkr/Crawler.git
+cd Crawler
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cp config.example.py config.py
+nano config.py  # Proxy'leri düzenle
+mkdir -p data/output data/failures logs
+
+# ===== TEST =====
+python3 process_warcs.py --enable-proxy --workers 3 --limit 5
+
+# ===== PRODUCTION (Screen ile) =====
+screen -S crawler
+source venv/bin/activate
+python3 process_warcs.py --enable-proxy --workers 15 --limit 10000
+# Ctrl+A, sonra D (detach)
+```
+
+### Ortak Komutlar
+```bash
 # ===== MONİTORİNG =====
 screen -r crawler  # Screen'e dön
 tail -f logs/crawler.log  # Logları izle
@@ -552,7 +628,9 @@ htop  # Resource kullanımı
 scp -r ubuntu@sunucu-ip:~/Crawler/data/output/ ./
 
 # ===== GÜNCELLEME =====
-cd ~/Crawler && git pull && sudo pip3 install -r requirements.txt --upgrade
+cd ~/Crawler && git pull
+# Venv ile: source venv/bin/activate && pip install -r requirements.txt --upgrade
+# Venv olmadan: sudo pip3 install --break-system-packages -r requirements.txt --upgrade
 ```
 
 ## Faydalı Alias'lar
