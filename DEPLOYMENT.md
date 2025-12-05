@@ -22,12 +22,20 @@ ssh kullanici@sunucu-ip
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-pip python3-venv git
+
+# Eğer python3-venv yüklü değilse veya hata alırsanız:
+sudo apt install -y python3.10-venv  # veya python3.11-venv, python sürümünüze göre
 ```
 
 ### CentOS/RHEL:
 ```bash
 sudo yum install -y python3 python3-pip git
+
+# RHEL/CentOS 8+:
+sudo dnf install -y python3 python3-pip git
 ```
+
+**Not:** Ubuntu'da `python3 -m venv` komutu çalışmazsa `python3-venv` paketini yüklemeniz gerekir.
 
 ## 3. Projeyi İndirme
 
@@ -48,11 +56,24 @@ cd Crawler
 # Virtual environment oluştur
 python3 -m venv venv
 
+# Eğer "No module named venv" hatası alırsanız:
+# Ubuntu/Debian:
+sudo apt install -y python3-venv
+# veya Python sürümünüze özel:
+sudo apt install -y python3.10-venv
+
 # Virtual environment'ı aktif et
 source venv/bin/activate
 
 # pip'i güncelle
 pip install --upgrade pip
+```
+
+**Alternatif:** virtualenv kullanmak isterseniz:
+```bash
+sudo apt install -y python3-virtualenv
+virtualenv venv
+source venv/bin/activate
 ```
 
 ## 5. Bağımlılıkları Yükleme
