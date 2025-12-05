@@ -292,15 +292,10 @@ If you encounter issues not covered here:
 
 ## Configuration Tips
 
-**For stable long-running jobs:**
+**For stable long-running jobs (sample mode):**
 
-```python
-# config.py
-MAX_WORKERS = 3              # Conservative
-REQUESTS_PER_SECOND = 1.5    # Gentle rate limit
-WARC_SAMPLE_SIZE = 5 * 1024 * 1024  # 5MB samples
-
-# Command line
+```bash
+# Sample mode: Fast, download only 5MB per WARC
 python process_warcs.py \
   --workers 3 \
   --sample-size 5 \
@@ -309,21 +304,43 @@ python process_warcs.py \
   --retry-delay 300
 ```
 
+**For complete scanning (full WARC mode):**
+
+```bash
+# Full mode: Download entire WARC files (1GB+ each, SLOW!)
+# Use 0 for sample-size to download full WARCs
+python process_warcs.py \
+  --workers 2 \
+  --sample-size 0 \
+  --rate-limit 0.5 \
+  --limit 10
+```
+
 **For fast exploration:**
 
-```python
-# config.py
-MAX_WORKERS = 10
-REQUESTS_PER_SECOND = 3.0
-WARC_SAMPLE_SIZE = 10 * 1024 * 1024
-
-# Command line
+```bash
+# Fast sample mode: Quick scan with 10MB samples
 python process_warcs.py \
   --limit 100 \
   --workers 10 \
   --sample-size 10 \
   --rate-limit 3.0
 ```
+
+### Sample Size Guide
+
+- `--sample-size 5`: 5MB per WARC (fast, ~50-100 URLs per WARC)
+- `--sample-size 10`: 10MB per WARC (default, ~100-200 URLs per WARC)
+- `--sample-size 50`: 50MB per WARC (thorough, ~500-1000 URLs per WARC)
+- `--sample-size 0`: **Full WARC** (complete, ALL URLs, 1GB+ download, VERY SLOW!)
+
+### Deduplication Behavior
+
+**Changed in latest version:**
+- Deduplication is now **per-WARC** instead of global
+- Same URL in different WARCs = recorded multiple times
+- Example: If `example.com` appears in 10 WARCs, you get 10 results
+- Use `sort -u` or post-process to deduplicate results if needed
 
 ---
 

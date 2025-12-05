@@ -45,7 +45,7 @@ def main():
         '--sample-size',
         type=int,
         default=10,
-        help='Sample size per WARC in MB (default: 10)'
+        help='Sample size per WARC in MB (default: 10, use 0 for full WARC)'
     )
 
     parser.add_argument(

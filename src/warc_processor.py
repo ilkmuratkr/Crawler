@@ -174,8 +174,15 @@ class WARCProcessor:
 
         url = f"{self.BASE_URL}{warc_path}"
 
-        # HTTP Range request - sadece ilk N MB
-        headers = {'Range': f'bytes=0-{self.sample_size - 1}'}
+        # HTTP Range request - download sample or full file
+        headers = {}
+        if self.sample_size > 0:
+            # Sample mode: only first N MB
+            headers = {'Range': f'bytes=0-{self.sample_size - 1}'}
+            logger.debug(f"Fetching sample ({self.sample_size / 1024 / 1024}MB) from {warc_path}")
+        else:
+            # Full mode: download entire WARC
+            logger.debug(f"Fetching FULL WARC: {warc_path}")
 
         # Proxy ayarları
         proxies = None
@@ -335,6 +342,8 @@ class WARCProcessor:
             return []
 
         # Detect Next.js
+        found_in_this_warc = set()  # Per-WARC deduplication
+
         for sample in samples:
             if self.shutdown_requested:
                 break
@@ -348,8 +357,11 @@ class WARCProcessor:
                 full_url = sample['url']
                 schema = parsed.scheme  # http or https
 
-                # Duplicate check - by full URL, not just domain
-                if full_url not in self.stats['total_urls']:
+                # Duplicate check - only within this WARC file
+                if full_url not in found_in_this_warc:
+                    found_in_this_warc.add(full_url)
+
+                    # Global stats tracking (for reporting only)
                     self.stats['total_urls'].add(full_url)
                     self.stats['total_domains'].add(domain)
                     self.stats['nextjs_found'] += 1
