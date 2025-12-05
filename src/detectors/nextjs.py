@@ -5,8 +5,12 @@ Detects Next.js usage through multiple indicators
 
 import re
 import logging
+import warnings
 from typing import Dict, List, Optional
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+# Suppress BeautifulSoup XML warning
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 logger = logging.getLogger(__name__)
 
