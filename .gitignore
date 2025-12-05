@@ -38,7 +38,7 @@ data/
 logs/
 *.log
 cache/
-warc.paths
+# warc.paths - artık dahil (compressed)
 *.warc.gz
 
 # Config (sensitive data) - Yorum: config.py artık dahil, template olarak
