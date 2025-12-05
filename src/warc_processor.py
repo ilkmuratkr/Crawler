@@ -228,8 +228,12 @@ class WARCProcessor:
                     })
 
         except Exception as e:
-            logger.warning(f"Parse error: {e}")
-            raise
+            # Partial WARC hatası normal (10MB sample alıyoruz)
+            if "Compressed file ended" in str(e) or "end-of-stream" in str(e):
+                logger.debug(f"Partial WARC (expected): {e}")
+            else:
+                logger.warning(f"Parse error: {e}")
+            pass
 
         return results
 
@@ -279,7 +283,9 @@ class WARCProcessor:
         try:
             samples = self.parse_warc_sample(warc_data)
         except Exception as e:
-            logger.error(f"Failed to parse {warc_path}: {e}")
+            # Partial WARC hatası görmezden gel
+            if "Compressed file ended" not in str(e) and "end-of-stream" not in str(e):
+                logger.error(f"Failed to parse {warc_path}: {e}")
             self.stats['failed'] += 1
             return []
 
