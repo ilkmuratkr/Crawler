@@ -17,10 +17,9 @@ cd Crawler
 # 3. Python paketlerini yükle
 sudo pip3 install --break-system-packages -r requirements.txt
 
-# 4. Config oluştur
+# 4. Config oluştur (proxy'ler zaten içinde!)
 cp config.example.py config.py
-nano config.py
-# 15 proxy'yi düzenle ve kaydet (Ctrl+O, Enter, Ctrl+X)
+# Eğer proxy portlarınız farklıysa: nano config.py
 
 # 5. Dizinleri oluştur
 mkdir -p data/output data/failures logs
@@ -34,31 +33,35 @@ python3 process_warcs.py --enable-proxy --workers 15 --limit 10000
 # Ctrl+A sonra D (detach)
 ```
 
-## Config.py Proxy Ayarları
+## Config.py - Proxy'ler ZATEN HAZIR!
 
-`nano config.py` ile açın ve proxy'leri ekleyin:
+Config dosyasını kopyaladıktan sonra **proxy'ler zaten içinde!** Sadece kontrol et:
 
-```python
-ENABLE_PROXY = True
-PROXY_HOST = "localhost"
+```bash
+cat config.py | grep -A 20 PROXY_CONFIGS
+```
 
-PROXY_CONFIGS = [
-    {"name": "alpine-vpn-3973", "port": 8956, "vpn_ip": "223.165.69.73"},
-    {"name": "alpine-vpn-2547", "port": 8955, "vpn_ip": "68.235.38.19"},
-    {"name": "alpine-vpn-5853", "port": 8954, "vpn_ip": "134.19.179.50"},
-    {"name": "alpine-vpn-6480", "port": 8953, "vpn_ip": "146.70.67.66"},
-    {"name": "alpine-vpn-9166", "port": 8946, "vpn_ip": "68.235.36.19"},
-    {"name": "alpine-vpn-4505", "port": 8944, "vpn_ip": "38.88.124.103"},
-    {"name": "alpine-vpn-8629", "port": 8948, "vpn_ip": "213.152.161.107"},
-    {"name": "alpine-vpn-5703", "port": 8943, "vpn_ip": "184.75.208.170"},
-    {"name": "alpine-vpn-5374", "port": 8942, "vpn_ip": "184.75.208.247"},
-    {"name": "alpine-vpn-110", "port": 8940, "vpn_ip": "104.254.90.122"},
-    {"name": "alpine-vpn-864", "port": 8939, "vpn_ip": "146.70.126.247"},
-    {"name": "alpine-vpn-8591", "port": 8929, "vpn_ip": "198.44.134.19"},
-    {"name": "alpine-vpn-4203", "port": 8949, "vpn_ip": "213.152.162.116"},
-    {"name": "alpine-vpn-4180", "port": 8945, "vpn_ip": "37.120.146.146"},
-    {"name": "alpine-vpn-9223", "port": 8941, "vpn_ip": "37.120.233.74"},
-]
+15 proxy otomatik gelir:
+- alpine-vpn-3973 → 223.165.69.73:8956
+- alpine-vpn-2547 → 68.235.38.19:8955
+- alpine-vpn-5853 → 134.19.179.50:8954
+- alpine-vpn-6480 → 146.70.67.66:8953
+- alpine-vpn-9166 → 68.235.36.19:8946
+- alpine-vpn-4505 → 38.88.124.103:8944
+- alpine-vpn-8629 → 213.152.161.107:8948
+- alpine-vpn-5703 → 184.75.208.170:8943
+- alpine-vpn-5374 → 184.75.208.247:8942
+- alpine-vpn-110 → 104.254.90.122:8940
+- alpine-vpn-864 → 146.70.126.247:8939
+- alpine-vpn-8591 → 198.44.134.19:8929
+- alpine-vpn-4203 → 213.152.162.116:8949
+- alpine-vpn-4180 → 37.120.146.146:8945
+- alpine-vpn-9223 → 37.120.233.74:8941
+
+**Eğer proxy portları farklıysa:**
+```bash
+nano config.py
+# PROXY_CONFIGS kısmını düzenle
 ```
 
 ## Monitoring
