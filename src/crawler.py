@@ -52,6 +52,7 @@ class NextJsCrawler:
 
         self.progress_logger = ProgressLogger(logger)
         self.found_domains: Set[str] = set()
+        self.found_urls: Set[str] = set()  # Track unique URLs
         self.results: List[Dict] = []
 
     def search_and_detect(
@@ -170,19 +171,24 @@ class NextJsCrawler:
                 if confidence_levels.get(detection['confidence'], 0) >= \
                    confidence_levels.get(self.min_confidence, 2):
 
-                    # Extract domain
+                    # Extract domain and schema
                     from urllib.parse import urlparse
-                    domain = urlparse(warc_info['url']).netloc
+                    parsed = urlparse(warc_info['url'])
+                    domain = parsed.netloc
+                    full_url = warc_info['url']
+                    schema = parsed.scheme
 
-                    # Avoid duplicates
-                    if domain in self.found_domains:
+                    # Avoid duplicates - by full URL
+                    if full_url in self.found_urls:
                         return None
 
                     self.found_domains.add(domain)
+                    self.found_urls.add(full_url)
 
                     return {
                         'domain': domain,
-                        'url': warc_info['url'],
+                        'url': full_url,
+                        'schema': schema,
                         'detected_at': datetime.now().isoformat(),
                         'crawl_date': warc_info['timestamp'],
                         'confidence': detection['confidence'],
@@ -267,7 +273,7 @@ class NextJsCrawler:
 
         with open(csv_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=[
-                'domain', 'url', 'confidence', 'build_id',
+                'domain', 'url', 'schema', 'confidence', 'build_id',
                 'detected_at', 'crawl_date'
             ])
             writer.writeheader()
@@ -276,6 +282,7 @@ class NextJsCrawler:
                 writer.writerow({
                     'domain': result.get('domain'),
                     'url': result.get('url'),
+                    'schema': result.get('schema', 'unknown'),
                     'confidence': result.get('confidence'),
                     'build_id': result.get('build_id'),
                     'detected_at': result.get('detected_at'),

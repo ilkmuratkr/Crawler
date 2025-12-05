@@ -103,7 +103,8 @@ class WARCProcessor:
             'successful': 0,
             'failed': 0,
             'nextjs_found': 0,
-            'total_domains': set()
+            'total_domains': set(),
+            'total_urls': set()  # Track unique URLs instead of just domains
         }
 
         # Session
@@ -342,16 +343,21 @@ class WARCProcessor:
 
             if detection['is_nextjs'] and detection['confidence'] in ['high', 'medium']:
                 from urllib.parse import urlparse
-                domain = urlparse(sample['url']).netloc
+                parsed = urlparse(sample['url'])
+                domain = parsed.netloc
+                full_url = sample['url']
+                schema = parsed.scheme  # http or https
 
-                # Duplicate check
-                if domain not in self.stats['total_domains']:
+                # Duplicate check - by full URL, not just domain
+                if full_url not in self.stats['total_urls']:
+                    self.stats['total_urls'].add(full_url)
                     self.stats['total_domains'].add(domain)
                     self.stats['nextjs_found'] += 1
 
                     results.append({
                         'domain': domain,
-                        'url': sample['url'],
+                        'url': full_url,
+                        'schema': schema,  # Add http/https
                         'confidence': detection['confidence'],
                         'indicators': detection['indicators'],
                         'build_id': detection['build_id'],
@@ -412,7 +418,8 @@ class WARCProcessor:
                             # Real-time feedback
                             if results:
                                 for r in results:
-                                    print(f"\n✓ Found: {r['domain']} ({r['confidence']})")
+                                    schema_icon = "🔒" if r.get('schema') == 'https' else "🔓"
+                                    print(f"\n✓ Found: {schema_icon} {r['url']} ({r['confidence']})")
 
                         except KeyboardInterrupt:
                             logger.warning("Interrupted, stopping gracefully...")
@@ -441,7 +448,8 @@ class WARCProcessor:
             f"Progress: {self.stats['processed']} processed, "
             f"{self.stats['successful']} successful, "
             f"{self.stats['failed']} failed, "
-            f"{self.stats['nextjs_found']} Next.js sites found"
+            f"{self.stats['nextjs_found']} Next.js URLs found "
+            f"({len(self.stats['total_domains'])} unique domains)"
         )
 
     def save_results(self, results: List[Dict], filename: Optional[str] = None):
@@ -469,13 +477,14 @@ class WARCProcessor:
         csv_path = filepath.with_suffix('.csv')
         with open(csv_path, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=[
-                'domain', 'url', 'confidence', 'build_id', 'warc_source'
+                'domain', 'url', 'schema', 'confidence', 'build_id', 'warc_source'
             ])
             writer.writeheader()
             for r in results:
                 writer.writerow({
                     'domain': r['domain'],
                     'url': r['url'],
+                    'schema': r.get('schema', 'unknown'),
                     'confidence': r['confidence'],
                     'build_id': r['build_id'],
                     'warc_source': r.get('warc_source', '')
@@ -493,11 +502,12 @@ class WARCProcessor:
         logger.info("=" * 60)
         logger.info("FINAL STATISTICS")
         logger.info("=" * 60)
-        logger.info(f"Total processed: {self.stats['processed']}")
+        logger.info(f"Total WARC files processed: {self.stats['processed']}")
         logger.info(f"Successful: {self.stats['successful']}")
         logger.info(f"Failed: {self.stats['failed']}")
-        logger.info(f"Next.js sites found: {self.stats['nextjs_found']}")
+        logger.info(f"Next.js URLs found: {self.stats['nextjs_found']}")
         logger.info(f"Unique domains: {len(self.stats['total_domains'])}")
+        logger.info(f"Unique full URLs: {len(self.stats['total_urls'])}")
         logger.info("")
         logger.info("Failure breakdown:")
         for reason, count in stats.get('by_reason', {}).items():
