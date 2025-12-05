@@ -6,6 +6,8 @@ warc.paths dosyasından WARC'ları işler, başarısızları kaydeder
 import logging
 import requests
 import gzip
+import signal
+import sys
 from typing import List, Dict, Optional
 from pathlib import Path
 from io import BytesIO
@@ -67,6 +69,10 @@ class WARCProcessor:
         self.sample_size = sample_size_mb * 1024 * 1024  # MB to bytes
         self.rate_limit = rate_limit
 
+        # Shutdown flag for graceful termination
+        self.shutdown_requested = False
+        self._setup_signal_handlers()
+
         # Create directories
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.failure_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +111,17 @@ class WARCProcessor:
         self.session.headers.update({
             'User-Agent': 'NextJS-Detector/1.0 (Research Project)'
         })
+
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown"""
+        def signal_handler(signum, frame):
+            sig_name = signal.Signals(signum).name
+            logger.warning(f"\n\nReceived {sig_name}. Initiating graceful shutdown...")
+            logger.warning("Please wait for current tasks to complete...")
+            self.shutdown_requested = True
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
     def load_warc_paths(self, limit: Optional[int] = None) -> List[str]:
         """
@@ -149,6 +166,11 @@ class WARCProcessor:
         Returns:
             BytesIO veya None (başarısızlık)
         """
+        # Check for shutdown request
+        if self.shutdown_requested:
+            logger.info("Shutdown requested, skipping fetch")
+            raise KeyboardInterrupt("Shutdown requested")
+
         url = f"{self.BASE_URL}{warc_path}"
 
         # HTTP Range request - sadece ilk N MB
@@ -156,9 +178,11 @@ class WARCProcessor:
 
         # Proxy ayarları
         proxies = None
+        proxy_info = "direct"
         if current_proxy:
             proxies = current_proxy.proxies
-            logger.debug(f"Using proxy: {current_proxy.vpn_ip}:{current_proxy.port}")
+            proxy_info = f"{current_proxy.name} ({current_proxy.vpn_ip}:{current_proxy.port})"
+            logger.debug(f"Using proxy: {proxy_info}")
 
         try:
             response = self.session.get(
@@ -172,13 +196,24 @@ class WARCProcessor:
             # 206 (Partial Content) veya 200 (OK) bekliyoruz
             if response.status_code in [200, 206]:
                 data = response.content
-                logger.debug(f"Fetched {len(data)} bytes from {warc_path}")
+                logger.debug(f"Fetched {len(data)} bytes from {warc_path} via {proxy_info}")
                 return BytesIO(data)
             else:
-                raise Exception(f"HTTP {response.status_code}")
+                error_msg = f"HTTP {response.status_code}"
+                if current_proxy:
+                    error_msg += f" (proxy: {proxy_info})"
+                raise Exception(error_msg)
 
+        except requests.exceptions.ProxyError as e:
+            logger.error(f"Proxy error with {proxy_info}: {e}")
+            raise
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Timeout with {proxy_info}: {e}")
+            raise
         except Exception as e:
-            raise  # Retry handler catch edecek
+            if current_proxy:
+                logger.error(f"Error with proxy {proxy_info}: {e}")
+            raise
 
     def parse_warc_sample(self, warc_data: BytesIO) -> List[Dict]:
         """
@@ -247,6 +282,11 @@ class WARCProcessor:
         Returns:
             Bulunan Next.js siteleri
         """
+        # Check for shutdown request
+        if self.shutdown_requested:
+            logger.info(f"Shutdown requested, skipping WARC: {warc_path}")
+            return []
+
         results = []
 
         # Rate limiting
@@ -268,11 +308,15 @@ class WARCProcessor:
         def fetch_func(current_proxy=None):
             return self.fetch_warc_sample(warc_path, current_proxy=current_proxy)
 
-        warc_data = self.retry_handler.execute_with_retry(
-            func=fetch_func,
-            warc_path=warc_path,
-            current_proxy=current_proxy
-        )
+        try:
+            warc_data = self.retry_handler.execute_with_retry(
+                func=fetch_func,
+                warc_path=warc_path,
+                current_proxy=current_proxy
+            )
+        except KeyboardInterrupt:
+            logger.info(f"Interrupted while processing: {warc_path}")
+            return []
 
         if warc_data is None:
             # Retry handler başarısız oldu, skip
@@ -291,6 +335,9 @@ class WARCProcessor:
 
         # Detect Next.js
         for sample in samples:
+            if self.shutdown_requested:
+                break
+
             detection = self.detector.detect(sample['html'], sample['url'])
 
             if detection['is_nextjs'] and detection['confidence'] in ['high', 'medium']:
@@ -341,35 +388,50 @@ class WARCProcessor:
         all_results = []
 
         # Parallel processing
-        with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            future_to_path = {
-                executor.submit(self.process_warc, path): path
-                for path in warc_paths
-            }
+        try:
+            with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                future_to_path = {
+                    executor.submit(self.process_warc, path): path
+                    for path in warc_paths
+                }
 
-            with tqdm(total=len(warc_paths), desc="Processing WARCs") as pbar:
-                for future in as_completed(future_to_path):
-                    path = future_to_path[future]
+                with tqdm(total=len(warc_paths), desc="Processing WARCs") as pbar:
+                    for future in as_completed(future_to_path):
+                        # Check for shutdown
+                        if self.shutdown_requested:
+                            logger.warning("Shutdown requested, cancelling remaining tasks...")
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            break
 
-                    try:
-                        results = future.result(timeout=600)  # 10 min timeout per WARC
-                        all_results.extend(results)
+                        path = future_to_path[future]
 
-                        # Real-time feedback
-                        if results:
-                            for r in results:
-                                print(f"\n✓ Found: {r['domain']} ({r['confidence']})")
+                        try:
+                            results = future.result(timeout=600)  # 10 min timeout per WARC
+                            all_results.extend(results)
 
-                    except Exception as e:
-                        logger.error(f"Unexpected error processing {path}: {e}")
-                        self.stats['failed'] += 1
+                            # Real-time feedback
+                            if results:
+                                for r in results:
+                                    print(f"\n✓ Found: {r['domain']} ({r['confidence']})")
 
-                    self.stats['processed'] += 1
-                    pbar.update(1)
+                        except KeyboardInterrupt:
+                            logger.warning("Interrupted, stopping gracefully...")
+                            self.shutdown_requested = True
+                            break
+                        except Exception as e:
+                            logger.error(f"Unexpected error processing {path}: {e}")
+                            self.stats['failed'] += 1
 
-                    # Progress report every 100 WARCs
-                    if self.stats['processed'] % 100 == 0:
-                        self._log_progress()
+                        self.stats['processed'] += 1
+                        pbar.update(1)
+
+                        # Progress report every 100 WARCs
+                        if self.stats['processed'] % 100 == 0:
+                            self._log_progress()
+
+        except KeyboardInterrupt:
+            logger.warning("Processing interrupted by user")
+            self.shutdown_requested = True
 
         return all_results
 
